@@ -11,17 +11,27 @@ print = (arg) -> console.log(arg)
 
 ############################################################
 cfg = null
+pathHandler = null
+preparation = null
 
 ############################################################
 mainprocessmodule.initialize = () ->
     log "mainprocessmodule.initialize"
     cfg = allModules.configmodule
+    pathHandler = allModules.pathhandlermodule
+    preparation = allModules.preparationmodule
     return 
 
 ############################################################
 mainprocessmodule.execute = (e) ->
     log "mainprocessmodule.execute"
-    olog e
+
+    await pathHandler.preparePathsOfUnprepared(e.unprepared)
+    await pathHandler.preparePathsOfContent(e.content)
+    await pathHandler.checkOutputPath(e.output)
+    
+    await preparation.execute()
+
     return
 
 module.exports = mainprocessmodule

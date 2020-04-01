@@ -21,7 +21,8 @@
     },
     "homepage": "https://github.com/JhonnyJason/prepare-templatized-views-output#readme",
     "dependencies": {
-        "chalk": "^2.4.2",
-        "meow": "^5.0.0"
+        "chalk": "^3.0.0",
+        "cheerio": "^1.0.0-rc.3",
+        "meow": "^6.1.0"
     }
 }
