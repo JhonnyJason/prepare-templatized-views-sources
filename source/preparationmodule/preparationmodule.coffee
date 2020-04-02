@@ -12,14 +12,10 @@ print = (arg) -> console.log(arg)
 ############################################################
 cheerio = require "cheerio"
 fs = require "fs"
-
+decamelize = require "decamelize"
 
 ############################################################
 pathHandler = null
-
-############################################################
-ignoredSubTags = ["span", "a", "b", "sup", "img", "strong", "br", "script"]
-## Probably we donot need this, as there is no content here^^
 
 ############################################################
 preparationmodule.initialize = () ->
@@ -41,12 +37,12 @@ readFile = (path) ->
 
 prepare = (filePaths) ->
     log "prepare"
+    log filePaths.templatePath
     template = await readFile(filePaths.templatePath)
     content = require filePaths.contentPath
     $ = cheerio.load(template)
     head = $("head")
     body = $("body")
-    # olog content
 
     prepareBody($, body, content)
 
@@ -58,59 +54,128 @@ prepare = (filePaths) ->
     fs.writeFile(filePaths.outputPath, $.html(), () -> return)
     return
 
-prepareBody = ($, body, content) ->
+prepareBody = ($, cheerioBody, content) ->
     log "prepareBody"
-    prepareAllTexts($,body)
-    # prepareAllLinks($,body, content)
-    # prepareAllImages($,body, content)
-    # prepareAllLists($, body, content)
-
+    prepareAllTexts($,cheerioBody)
+    # prepareAllLinks($,cheerioBody, content)
+    # prepareAllImages($,cheerioBody, content)
+    prepareAllLists($, cheerioBody, content)
     
     return
 
-prepareAllTexts = ($, body) ->
+############################################################
+prepareAllLists = ($, cheerioBody, content) ->
+    log "prepareAllLists"
+    allListKeys = searchArrays("sharedContent", content.sharedContent)
+    allListKeys = allListKeys.concat(searchArrays("content", content.content))
+    for listKey in allListKeys
+        prepareList($, cheerioBody, content, listKey)
+    return
+
+searchArrays = (prefix, obj) ->
+    log "searchArrays"
+    if typeof obj != "object" then return
+    result = []
+    for key,sub of obj
+        newResults = searchArrays(prefix+"."+key, sub)
+        if !newResults then continue
+        if Array.isArray(sub) then newResults.push(prefix+"."+key)
+        result = result.concat(newResults)
+    return result
+
+
+prepareList = ($, cheerioBody, content, listKey) ->
+    log "prepareList"
+    keyTokens = listKey.split(".")
+    token = keyTokens.shift()
+    listObject = content[token]
+    listObject = listObject[token] for token in keyTokens
+    if typeof listObject[0] == "string" then prepareTextList($, cheerioBody,listKey)
+    else prepareObjectList($, cheerioBody, listKey, listObject)
+    return
+
+prepareTextList = ($, cheerioBody, listKey) ->
+    log "prepareTextList"
+    selector = "[text-content-key='"+listKey+".0']"
+    log selector
+    firstElement = cheerioBody.find(selector).first()
+    listParent = firstElement.parent()
+    listParent.attr("list-content-key", listKey)
+    return
+
+prepareObjectList = ($, cheerioBody, listKey, listObject) ->
+    log "prepareObjectList"
+    return
+
+############################################################
+prepareAllImages = ($, cheerioBody, content) ->
+    log "prepareAllImages"
+    allImages = Object.keys(content.images)
+    prepareImage($, cheerioBody, image) for image in allImages
+    return
+
+prepareImage = ($, cheerioBody, image) ->
+    log "prepareImage"
+    log image
+    imageId = decamelize(image, "-")
+    log imageId
+    cheerioImage = cheerioBody.find("#"+imageId).first()
+    cheerioImage.attr("image-content-key", image)
+    return
+
+############################################################
+prepareAllLinks = ($, cheerioBody) ->
+    log "prepareAllLinks"
+    allLinks = cheerioBody.find("a")
+    log allLinks.length
+    prepareLinkNode $,link for link in allLinks when isContentLink($,link)
+    return
+
+isContentLink = ($, link) ->
+    log "isContentLink"
+    cheerioLink = $(link)
+    href = cheerioLink.attr("href")
+    identifier = ".ref}}}"
+    index = href.lastIndexOf(identifier)
+    return index == (href.length - identifier.length)
+
+prepareLinkNode = ($, link) ->
+    log "prepareLinkNode"
+    cheerioLink = $(link)
+    linkContentKey = cheerioLink.attr("href").replace(/{/g, "").replace(/}/g, "")
+    cheerioLink.attr("link-content-key", linkContentKey)
+    return
+
+############################################################
+prepareAllTexts = ($, cheerioBody) ->
     log "prepareAllTexts"
-    children = body.children()
+    children = cheerioBody.children()
     log '@Body we have ' + children.length + ' children!'
-    prepareNode $,child for child in children when !($(child).is('script'))
+    prepareTextNode $,child for child in children #when !($(child).is('script'))
     return
 
-
-
-isSubTagToIgnore = ($, node) ->
-    return true for tag in ignoredSubTags when $(node).is(tag)
-    false
-
-prepareNode = ($, node, content) ->
+prepareTextNode = ($, node) ->
     log "prepareNode"
-    # if !node.html() then return
-    # if hasNoText(node) then return
-    log node.tagName
-
-    # log node.html()
-    children = node.children
+    cheerioNode = $(node)    
+    if hasNoText(cheerioNode) then return
     
-    if !children.length
-        log "probably we have reached a leaf :-)"
-        log $(node).text()
+    children = cheerioNode.children()
+    if children.length == 0
+        # log "-----"
+        # log "found leaf at " + node.tagName + " " + id
+        # log cheerioNode.text()
+        textContentKey = cheerioNode.text().replace(/{/g, "").replace(/}/g, "").replace(/\s/g, "")
+        # log textContentKey
+        cheerioNode.attr("text-content-key", textContentKey)
         return
 
-    log "@Node " + node.id + " we have " + children.length + " children!"
-    prepareNode $,child for child in children when !($(child).is('script'))
+    prepareTextNode $,child for child in children #when !($(child).is('script'))
     return
 
-hasNoText = (node) ->
-    text = node.text()
-    # log '_____________START'
-    # log text
-    if text
-        # log '_____________REPLACED'
-        text = text.replace(/\s/g, '')
-        # log text
-        if text
-            # log ' - - - had Text'
-            return false
-        # log ' - - - no Text'
+hasNoText = (cheerioNode) ->
+    text = cheerioNode.text()
+    if text then text = text.replace(/\s/g, '')
+    if text then return false
     return true
 
 
@@ -149,9 +214,10 @@ hasNoText = (node) ->
 preparationmodule.execute = ->
     log "preparationmodule.execute"
     filePathObjects = pathHandler.getFilePathObjects()
-    olog filePathObjects
-    promises = (prepare(filePathObject) for filePathObject in filePathObjects)
-    await Promise.all(promises)
+    # olog filePathObjects
+    # promises = (prepare(filePathObject) for filePathObject in filePathObjects)
+    # await Promise.all(promises)
+    await prepare(filePathObjects[0])
     return
 
 module.exports = preparationmodule

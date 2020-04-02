@@ -23,6 +23,7 @@
     "dependencies": {
         "chalk": "^3.0.0",
         "cheerio": "^1.0.0-rc.3",
+        "decamelize": "^4.0.0",
         "meow": "^6.1.0"
     }
 }
